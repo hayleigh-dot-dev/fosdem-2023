@@ -4,7 +4,7 @@
   "scripts": {
     "start": "./scripts/run.sh",
     "switch:backend": "cp gleam.backend.toml gleam.toml",
-    "swtich:frontend": "cp gleam.frontend.toml gleam.toml"
+    "switch:frontend": "cp gleam.frontend.toml gleam.toml"
   },
   "dependencies": {
     "react": "^18.2.0",

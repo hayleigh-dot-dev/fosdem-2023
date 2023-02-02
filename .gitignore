@@ -1,0 +1,11 @@
+# editor things
+.vscode
+
+# erlang/beam things
+*.beam
+*.ez
+build
+erl_crash.dump
+
+# node/js things
+node_modules

@@ -148,9 +148,9 @@ if erlang {
   fn upgrade_websocket(app: App) -> HandlerResponse {
     let handler =
       WebsocketHandler(
-        Some(on_ws_open(_, app)),
-        Some(on_ws_close(_, app)),
-        fn(_, _) { Ok(Nil) },
+        on_init: Some(on_ws_open(_, app)),
+        on_close: Some(on_ws_close(_, app)),
+        handler: fn(_, _) { Ok(Nil) },
       )
 
     mist_handler.Upgrade(handler)

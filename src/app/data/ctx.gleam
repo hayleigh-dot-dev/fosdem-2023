@@ -4,9 +4,9 @@ if javascript {
   import gleam/io
   import gleam/list
   import lustre/cmd.{Cmd}
-  import shared/audio/node.{Node}
-  import shared/audio/param.{Param}
-  import shared/audio.{CreatedPatch, DeletedPatch, Patches}
+  import app/audio/node.{Node}
+  import app/audio/param.{Param}
+  import app/audio.{CreatedPatch, DeletedPatch, Patches}
 
   // TYPES -----------------------------------------------------------------------
 

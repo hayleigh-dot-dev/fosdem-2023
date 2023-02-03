@@ -2,12 +2,17 @@ if erlang {
   // IMPORTS ---------------------------------------------------------------------
 
   import gleam/bit_builder
+  import gleam/dynamic
   import gleam/erlang/file
   import gleam/erlang/process.{Subject}
   import gleam/http.{Get}
   import gleam/http/request
   import gleam/http/response.{Response}
+  import gleam/int
+  import gleam/io
+  import gleam/json
   import gleam/list
+  import gleam/map
   import gleam/option.{Some}
   import gleam/otp/actor.{Continue, StartError}
   import gleam/result
@@ -19,12 +24,22 @@ if erlang {
   import mist/handler.{HandlerResponse} as mist_handler
   import mist/http.{BitBuilderBody, HttpResponseBody} as mist_http
   import mist/websocket.{TextMessage, WebsocketHandler}
+  import shared/state as shared
+  import shared/to_backend.{
+    AddStep, Play, RemoveStep, Stop, ToBackend, UpdateDelayAmount,
+    UpdateDelayTime, UpdateGain, UpdateStep, UpdateStepCount, UpdateWaveform,
+  }
+  import shared/to_frontend.{
+    SetDelayAmount, SetDelayTime, SetGain, SetRows, SetState, SetStep,
+    SetStepCount, SetWaveform, ToFrontend,
+  }
 
   // TYPES -----------------------------------------------------------------------
 
   type Msg {
     OnConnect(client: Client)
     OnDisconnect(client: Client)
+    OnMessage(self: App, client: Client, message: ToBackend)
     Tick(self: App)
   }
 
@@ -35,7 +50,7 @@ if erlang {
     Subject(HandlerMessage)
 
   type State {
-    State(clients: Set(Client))
+    State(clients: Set(Client), shared: shared.State, running: Bool)
   }
 
   //
@@ -44,9 +59,6 @@ if erlang {
     assert Ok(app) = start()
     assert Ok(_) = serve(app)
 
-    // Kick off the main regular update loop. This will broadcast the current
-    // audio graph to all clients.
-    process.send_after(app, 500, Tick(app))
     // Serve starts a new process so we want to keep the main process alive.
     process.sleep_forever()
   }
@@ -54,32 +66,154 @@ if erlang {
   //
 
   fn start() -> Result(App, StartError) {
-    let init = State(set.new())
+    let init = State(set.new(), shared.init(), False)
 
     use event, state <- actor.start(init)
     let state = case event {
-      OnConnect(conn) -> on_connect(conn, state)
-      OnDisconnect(conn) -> on_disconnect(conn, state)
-      Tick(self) -> {
-        list.each(
-          set.to_list(state.clients),
-          fn(client) { websocket.send(client, TextMessage("tick")) },
-        )
+      OnConnect(client) -> on_connect(client, state)
+      OnDisconnect(client) -> on_disconnect(client, state)
+      OnMessage(self, _, Play) -> {
+        process.send_after(self, 400, Tick(self))
+        State(..state, running: True)
+      }
+      OnMessage(_, _, Stop) -> State(..state, running: False)
+      OnMessage(_, _, UpdateStep(#(name, idx, on))) -> {
+        let step_count = state.shared.step_count
+        let rows =
+          list.map(
+            state.shared.rows,
+            fn(row) {
+              case row.name == name {
+                True if idx < step_count ->
+                  shared.Row(..row, steps: map.insert(row.steps, idx, on))
+                _ -> row
+              }
+            },
+          )
+        let shared = shared.State(..state.shared, rows: rows)
+        broadcast(state.clients, SetRows(rows))
 
-        process.send_after(self, 500, Tick(self))
-        state
+        State(..state, shared: shared)
+      }
+
+      OnMessage(_, _, UpdateStepCount(step_count)) -> {
+        let shared = shared.State(..state.shared, step_count: step_count)
+        broadcast(state.clients, SetStepCount(step_count))
+
+        State(..state, shared: shared)
+      }
+
+      OnMessage(_, _, AddStep) -> {
+        let step_count = state.shared.step_count + 1
+        let rows =
+          list.map(
+            state.shared.rows,
+            fn(row) {
+              shared.Row(
+                ..row,
+                steps: map.insert(row.steps, step_count - 1, False),
+              )
+            },
+          )
+        let shared =
+          shared.State(..state.shared, step_count: step_count, rows: rows)
+        broadcast(state.clients, SetStepCount(step_count))
+
+        State(..state, shared: shared)
+      }
+
+      OnMessage(_, _, RemoveStep) -> {
+        let step_count = int.max(state.shared.step_count - 1, 1)
+        let rows =
+          list.map(
+            state.shared.rows,
+            fn(row) {
+              case step_count {
+                1 -> row
+                _ ->
+                  shared.Row(
+                    ..row,
+                    steps: map.insert(row.steps, step_count - 1, False),
+                  )
+              }
+            },
+          )
+
+        let shared =
+          shared.State(..state.shared, step_count: step_count, rows: rows)
+        broadcast(state.clients, SetStepCount(step_count))
+
+        State(..state, shared: shared)
+      }
+
+      OnMessage(_, _, UpdateWaveform(waveform)) -> {
+        let shared = shared.State(..state.shared, waveform: waveform)
+        broadcast(state.clients, SetWaveform(waveform))
+
+        State(..state, shared: shared)
+      }
+
+      OnMessage(_, _, UpdateDelayTime(delay_time)) -> {
+        let shared = shared.State(..state.shared, delay_time: delay_time)
+        broadcast(state.clients, SetDelayTime(delay_time))
+
+        State(..state, shared: shared)
+      }
+
+      OnMessage(_, _, UpdateDelayAmount(delay_amount)) -> {
+        let shared = shared.State(..state.shared, delay_amount: delay_amount)
+        broadcast(state.clients, SetDelayAmount(delay_amount))
+
+        State(..state, shared: shared)
+      }
+
+      OnMessage(_, _, UpdateGain(gain)) -> {
+        let shared = shared.State(..state.shared, gain: gain)
+        broadcast(state.clients, SetGain(gain))
+
+        State(..state, shared: shared)
+      }
+
+      Tick(self) -> {
+        case state.running {
+          True -> process.send_after(self, 400, Tick(self))
+          False -> dynamic.unsafe_coerce(dynamic.from(Nil))
+        }
+
+        let step = { state.shared.step + 1 } % state.shared.step_count
+        let shared = shared.State(..state.shared, step: step)
+
+        case step {
+          0 -> broadcast(state.clients, SetState(shared))
+          _ -> broadcast(state.clients, SetStep(step))
+        }
+
+        State(..state, shared: shared)
       }
     }
 
     Continue(state)
   }
 
+  // Broadcast a message to all connected clients.
+  fn broadcast(clients: Set(Client), message: ToFrontend) -> Nil {
+    use _, client <- set.fold(clients, Nil)
+    let json = to_frontend.encode(message)
+    let text = TextMessage(json.to_string(json))
+    websocket.send(client, text)
+  }
+
   fn on_connect(client: Client, state: State) -> State {
-    State(set.insert(state.clients, client))
+    let message = SetState(state.shared)
+    let json = to_frontend.encode(message)
+    let text = TextMessage(json.to_string(json))
+
+    websocket.send(client, text)
+    State(..state, clients: set.insert(state.clients, client))
   }
 
   fn on_disconnect(client: Client, state: State) -> State {
-    State(set.delete(state.clients, client))
+    State(..state, clients: set.delete(state.clients, client))
   }
 
   //
@@ -150,10 +284,25 @@ if erlang {
       WebsocketHandler(
         on_init: Some(on_ws_open(_, app)),
         on_close: Some(on_ws_close(_, app)),
-        handler: fn(_, _) { Ok(Nil) },
+        handler: fn(message, client) {
+          case message {
+            TextMessage(json) -> Ok(on_ws_message(client, json, app))
+            _ -> Error(Nil)
+          }
+        },
       )
 
     mist_handler.Upgrade(handler)
+  }
+
+  fn on_ws_message(client: Client, json: String, app: App) -> Nil {
+    case json.decode(json, to_backend.decoder) {
+      Ok(message) -> actor.send(app, OnMessage(app, client, message))
+      Error(error) -> {
+        io.debug(error)
+        Nil
+      }
+    }
   }
 
   fn on_ws_open(client: Client, app: App) -> Nil {

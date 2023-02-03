@@ -52,7 +52,7 @@ fn flatten(
         do_flatten(acc, key, t, params, connections)
 
       Node(t, params, connections) -> {
-        let key = base <> int.to_string(i)
+        let key = base <> "-" <> int.to_string(i)
         do_flatten(acc, key, t, params, connections)
       }
     }
@@ -70,7 +70,7 @@ fn do_flatten(
     case connection {
       Ref(key, param) -> Ref(key, param)
       Key(key, _, _, _) -> Ref(key, None)
-      Node(_, _, _) -> Ref(key <> int.to_string(i), None)
+      Node(_, _, _) -> Ref(key <> "-" <> int.to_string(i), None)
     }
   }
   let node = Node(t, params, list.index_map(connections, to_ref))

@@ -13,7 +13,10 @@
       // need to do this once.
       import { main } from "./build/dev/javascript/fosdem/app/index.mjs";
 
-      main();
+      const ctx = (window.ctx = new window.AudioContext());
+      ctx.nodes = {};
+
+      const dispatch = main(ctx);
     </script>
   </head>
   <body>

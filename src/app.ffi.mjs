@@ -4,7 +4,6 @@ export const resume = (ctx) => ctx.resume();
 export const suspend = (ctx) => ctx.suspend();
 
 export const create_from_patch = (ctx, patch) => {
-  console.log(patch);
   // I'd like to use a `switch` here on the patch's constructor to determine
   // which variant it is, but a minifying bundler will go ahead and rename those
   // constructors to something nonsense.
@@ -73,7 +72,6 @@ const connect = (ctx, { from, to, param }) => {
 };
 
 export const delete_from_patch = (ctx, patch) => {
-  console.log(patch);
   // like with `create_from_patch` we can't rely on using the `constructor`
   // and instead need to do some structural duck typing shenanigans. The shape
   // of things is slightly different for deletions.

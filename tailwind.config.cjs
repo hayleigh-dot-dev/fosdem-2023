@@ -48,7 +48,7 @@ module.exports = {
       keyframes: {
         bloop: {
           "0%": { transform: "scale(1)", background: "#FF77EB" },
-          "50%": { transform: "scale(0.75)", background: "#FFAFF3" },
+          "50%": { transform: "scale(0.6)", background: "#FFAFF3" },
           "100%": { transform: "scale(1)", background: "#FF77EB" },
         },
       },

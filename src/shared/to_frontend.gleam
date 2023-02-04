@@ -7,6 +7,8 @@ import shared/state.{Row, State}
 
 // TYPES -----------------------------------------------------------------------
 
+///
+///
 pub type ToFrontend {
   SetState(State)
   SetRows(List(Row))

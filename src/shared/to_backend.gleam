@@ -3,22 +3,22 @@
 import gleam/dynamic.{DecodeError, Dynamic}
 import gleam/json.{Json}
 import gleam/result
-import shared/state.{Row}
-import gleam/io
 
 // TYPES -----------------------------------------------------------------------
 
+///
+///
 pub type ToBackend {
-  Play
-  Stop
-  UpdateStep(#(String, Int, Bool))
   AddStep
+  Play
   RemoveStep
+  Stop
+  UpdateDelayAmount(Float)
+  UpdateDelayTime(Float)
+  UpdateGain(Float)
+  UpdateStep(#(String, Int, Bool))
   UpdateStepCount(Int)
   UpdateWaveform(String)
-  UpdateDelayTime(Float)
-  UpdateDelayAmount(Float)
-  UpdateGain(Float)
 }
 
 // JSON ------------------------------------------------------------------------

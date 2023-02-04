@@ -6,7 +6,7 @@ if javascript {
   import lustre/cmd.{Cmd}
   import app/audio/node.{Node}
   import app/audio/param.{Param}
-  import app/audio.{CreatedPatch, DeletedPatch, Patches}
+  import app/audio/context.{CreatedPatch, DeletedPatch, Patches, diff, to_graph}
 
   // TYPES -----------------------------------------------------------------------
 
@@ -33,9 +33,9 @@ if javascript {
     prev: List(Node),
     next: List(Node),
   ) -> Cmd(msg) {
-    let prev = audio.to_graph(prev)
-    let next = audio.to_graph(next)
-    let patches = audio.diff(prev, next)
+    let prev = to_graph(prev)
+    let next = to_graph(next)
+    let patches = diff(prev, next)
 
     apply_patches(ctx, patches)
   }

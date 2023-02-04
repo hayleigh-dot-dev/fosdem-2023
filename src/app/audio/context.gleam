@@ -91,7 +91,7 @@ if javascript {
   // CONVERSIONS -----------------------------------------------------------------
   // UTILS -----------------------------------------------------------------------
 
-  fn to_graph(nodes: List(Node)) -> Map(String, Node) {
+  pub fn to_graph(nodes: List(Node)) -> Map(String, Node) {
     nodes
     |> list.index_fold(map.new(), flatten(""))
   }

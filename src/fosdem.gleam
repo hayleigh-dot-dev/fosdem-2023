@@ -264,6 +264,7 @@ if erlang {
     let is_js = string.ends_with(path, ".js")
     let is_css = string.ends_with(path, ".css")
     let is_html = string.ends_with(path, ".html")
+    let is_svg = string.ends_with(path, ".svg")
 
     let set_content_type = fn(mime) {
       response.set_header(res, "content-type", mime)
@@ -273,6 +274,7 @@ if erlang {
       _ if is_js -> set_content_type("application/javascript")
       _ if is_css -> set_content_type("text/css")
       _ if is_html -> set_content_type("text/html")
+      _ if is_svg -> set_content_type("image/svg+xml")
       _ -> set_content_type("text/plain")
     }
   }

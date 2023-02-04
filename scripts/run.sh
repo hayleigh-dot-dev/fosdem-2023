@@ -13,5 +13,7 @@ npx vite build --out-dir ./build/app
 # the erlang target.
 cp gleam.backend.toml gleam.toml
 
+cp -a images/* ./build/app/assets
+
 # Actually run the thing!
 gleam run

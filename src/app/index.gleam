@@ -191,46 +191,74 @@ if javascript {
 
   fn render(state: State) -> Element(Action) {
     element.main(
-      [attribute.class("container font-mono mx-auto py-6 px-4")],
+      [
+        attribute.class(
+          "flex flex-col font-mono mx-auto py-6 px-4 gap-6 w-screen",
+        ),
+      ],
       [
         //
         element.section(
           [],
           [
             element.h1(
-              [attribute.class("text-2xl font-bold")],
+              [attribute.class("text-2xl font-bold text-gleam-white")],
               [element.text("Hello, FOSDEM")],
             ),
           ],
         ),
         //
         element.section(
-          [],
+          [attribute.class("flex flex-row gap-6")],
           [
-            render_button(
-              "play",
-              "bg-gray-600 hover:bg-gray-800",
-              [event.on_click(dispatch(Send(Play)))],
+            element.div(
+              [attribute.class("flex flex-row gap-1")],
+              [
+                render_button(
+                  "play",
+                  "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [event.on_click(dispatch(Send(Play)))],
+                ),
+                render_button(
+                  "stop",
+                  "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [event.on_click(dispatch(Send(Stop)))],
+                ),
+                case state.gain {
+                  1.0 ->
+                    render_button(
+                      "mute",
+                      "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                      [event.on_click(dispatch(Suspend))],
+                    )
+                  _ ->
+                    render_button(
+                      "unmute",
+                      "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                      [event.on_click(dispatch(Resume))],
+                    )
+                },
+              ],
             ),
-            render_button(
-              "stop",
-              "bg-gray-600 hover:bg-gray-800",
-              [event.on_click(dispatch(Send(Stop)))],
-            ),
-            render_button(
-              "add step",
-              "bg-gray-600 hover:bg-gray-800",
-              [event.on_click(dispatch(Send(AddStep)))],
-            ),
-            render_button(
-              "remove step",
-              "bg-gray-600 hover:bg-gray-800",
-              [event.on_click(dispatch(Send(RemoveStep)))],
-            ),
-            render_button(
-              "reset steps",
-              "bg-orange-600 hover:bg-orange-800",
-              [],
+            element.div(
+              [attribute.class("flex flex-row gap-1")],
+              [
+                render_button(
+                  "add step",
+                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [event.on_click(dispatch(Send(AddStep)))],
+                ),
+                render_button(
+                  "remove step",
+                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [event.on_click(dispatch(Send(RemoveStep)))],
+                ),
+                render_button(
+                  "reset steps",
+                  "bg-orange-600 hover:bg-orange-800",
+                  [],
+                ),
+              ],
             ),
           ],
         ),
@@ -238,7 +266,10 @@ if javascript {
         element.section(
           [],
           [
-            element.text(int.to_string(state.shared.step)),
+            element.div(
+              [attribute.class("text-gleam-white")],
+              [element.text(int.to_string(state.shared.step))],
+            ),
             render_sequencer(state.shared.rows, state.shared.step),
           ],
         ),
@@ -247,37 +278,34 @@ if javascript {
           [],
           [
             element.h2(
-              [attribute.class("text-lg font-bold")],
-              [element.text("Controls")],
-            ),
-            case state.gain {
-              1.0 ->
-                render_button(
-                  "mute",
-                  "bg-gray-600 hover:bg-gray-800",
-                  [event.on_click(dispatch(Suspend))],
-                )
-              _ ->
-                render_button(
-                  "unmute",
-                  "bg-gray-600 hover:bg-gray-800",
-                  [event.on_click(dispatch(Resume))],
-                )
-            },
-          ],
-        ),
-        //
-        element.section(
-          [],
-          [
-            element.h2(
-              [attribute.class("text-lg font-bold")],
+              [attribute.class("text-lg font-bold text-gleam-white")],
               [element.text("Waveform:")],
             ),
-            render_button("sine", "bg-blue-600 hover:bg-blue-800", []),
-            render_button("triangle", "bg-green-600 hover:bg-green-800", []),
-            render_button("sawtooth", "bg-red-600 hover:bg-red-800", []),
-            render_button("square", "bg-yellow-600 hover:bg-yellow-800", []),
+            element.div(
+              [attribute.class("flex flex-row gap-1")],
+              [
+                render_image_button(
+                  "/assets/sine.svg",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [],
+                ),
+                render_image_button(
+                  "/assets/triangle.svg",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [],
+                ),
+                render_image_button(
+                  "/assets/square.svg",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [],
+                ),
+                render_image_button(
+                  "/assets/saw.svg",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  [],
+                ),
+              ],
+            ),
           ],
         ),
         //
@@ -285,11 +313,24 @@ if javascript {
           [],
           [
             element.h2(
-              [attribute.class("text-lg font-bold")],
+              [attribute.class("text-lg font-bold text-gleam-white")],
               [element.text("Delay Time:")],
             ),
-            render_button("short", "bg-purple-600 hover:bg-purple-800", []),
-            render_button("long", "bg-purple-600 hover:bg-purple-800", []),
+            element.div(
+              [attribute.class("flex flex-row gap-1")],
+              [
+                render_button(
+                  "short",
+                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800 w-20",
+                  [],
+                ),
+                render_button(
+                  "long",
+                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800 w-20",
+                  [],
+                ),
+              ],
+            ),
           ],
         ),
       ],
@@ -300,7 +341,7 @@ if javascript {
     element.button(
       [
         attribute.class(
-          "text-white " <> bg <> " border-4 border-gray-900 p-2 mr-4 my-2",
+          "text-white " <> bg <> " p-2 mr-4 my-2 rounded-md transition-color",
         ),
         ..attrs
       ],
@@ -308,9 +349,25 @@ if javascript {
     )
   }
 
+  fn render_image_button(src, bg, attrs) -> Element(Action) {
+    element.button(
+      [
+        attribute.class(
+          "text-white " <> bg <> " p-2 mr-4 my-2 rounded-md transition-color",
+        ),
+        ..attrs
+      ],
+      [element.img([attribute.src(src), attribute.class("w-10")])],
+    )
+  }
+
   fn render_sequencer(rows, active_column) -> Element(Action) {
     element.div(
-      [attribute.class("overflow-x border-4 border-gray-900 my-4 w-auto")],
+      [
+        attribute.class(
+          "overflow-x border-4 border-[#828282] rounded-md my-4 w-auto",
+        ),
+      ],
       list.map(rows, render_row(active_column)),
     )
   }
@@ -322,7 +379,7 @@ if javascript {
         [attribute.class("flex flex-row items-center")],
         [
           element.span(
-            [attribute.class("pl-2 pr-6 font-bold")],
+            [attribute.class("pl-2 pr-6 font-bold text-gleam-white")],
             [element.text(name)],
           ),
           ..list.map(map.to_list(steps), render_step(name, active_column))
@@ -334,23 +391,39 @@ if javascript {
   fn render_step(name, active_column) -> fn(#(Int, Bool)) -> Element(Action) {
     fn(step) {
       let #(idx, is_active) = step
-      let bg = case is_active {
-        True -> "bg-gray-900"
-        False -> "bg-gray-600"
-      }
-      let col_bg = case idx == active_column {
-        True -> "bg-gray-300"
-        False -> "bg-transparent"
+
+      // let bg = case is_active {
+      //   True -> "bg-faff-400"
+      //   False -> "bg-[#595959]"
+      // }
+      // let col_bg = case idx == active_column {
+      //   True -> "bg-faff-50"
+      //   False -> "bg-transparent"
+      // }
+      let bg = case idx == active_column {
+        True ->
+          case is_active {
+            True -> "bg-faff-200 animate-bloop"
+
+            False -> "bg-charcoal-500 scale-[0.8]"
+          }
+
+        False ->
+          case is_active {
+            True -> "bg-faff-300"
+
+            False -> "bg-charcoal-600 scale-[0.8]"
+          }
       }
 
       element.div(
-        [attribute.class("p-2 " <> col_bg)],
+        [attribute.class("p-2 ")],
         [
           element.button(
             [
               event.on_click(dispatch(Send(UpdateStep(#(name, idx, !is_active))))),
               attribute.class(
-                "text-white " <> bg <> " hover:bg-gray-800 border-4 border-gray-900 px-6 py-4",
+                "text-white " <> bg <> " hover:bg-faff-100 px-6 py-6 rounded-lg shadow-sm transition-all",
               ),
             ],
             [],

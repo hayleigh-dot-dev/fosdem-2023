@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 # gleam.frontend.toml contains all our gleam dependencies for
 # the javascript target.

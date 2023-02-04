@@ -7,8 +7,6 @@ if javascript {
   import app/ui/button
   import app/ui/layout
   import app/util/bool.{when}
-  import app/util/pair
-  import gleam/io
   import gleam/json
   import gleam/list
   import gleam/map
@@ -16,11 +14,11 @@ if javascript {
   import lustre
   import lustre_websocket.{OnClose,
     OnMessage, OnOpen, WebSocket, WebSocketEvent} as ws
-  import lustre/attribute
+  import lustre/attribute.{class, id}
   import lustre/cmd.{Cmd}
   import lustre/element.{Element}
   import shared/state.{
-    DelayTime, Long, Sawtooth, Short, Sine, Square, Triangle, Waveform,
+    DelayTime, Long, Row, Sawtooth, Short, Sine, Square, Triangle, Waveform,
   } as shared
   import shared/to_backend.{
     Play, Stop, ToBackend, UpdateDelayTime, UpdateStep, UpdateWaveform,
@@ -72,40 +70,29 @@ if javascript {
   }
 
   fn update(state: State, msg: Msg) -> #(State, Cmd(Msg)) {
-    let pure = pair.with(_, cmd.none())
-
-    io.debug(state)
-    case io.debug(msg) {
-      WebSocket(OnOpen(conn)) -> pure(State(..state, ws: Some(conn)))
-      WebSocket(OnClose(_)) -> pure(State(..state, ws: None))
+    case msg {
+      WebSocket(OnOpen(conn)) -> #(State(..state, ws: Some(conn)), cmd.none())
+      WebSocket(OnClose(_)) -> #(State(..state, ws: None), cmd.none())
       WebSocket(OnMessage(msg)) -> {
+        let State(_, ctx, nodes, gain, shared) = state
         let state = on_message(state, msg)
+        let #(nodes, cmds) = audio.render(ctx, shared, gain, nodes)
 
-        audio.render(state.ctx, state.shared, state.gain, state.nodes)
-        |> pair.map_fst(fn(nodes) { State(..state, nodes: nodes) })
+        #(State(..state, nodes: nodes), cmds)
       }
 
       Send(message) ->
-        case state.ws {
-          Some(ws) -> {
-            let json = to_backend.encode(message)
-            let text = json.to_string(json)
+        state.ws
+        |> option.map(fn(ws) {
+          let json = to_backend.encode(message)
+          let text = json.to_string(json)
 
-            io.debug(text)
+          #(state, ws.send(ws, text))
+        })
+        |> option.unwrap(#(state, cmd.none()))
 
-            state
-            |> pair.with(ws.send(ws, text))
-          }
-
-          None -> pure(state)
-        }
-
-      Resume -> {
-        context.resume(state.ctx)
-        pure(State(..state, gain: 1.0))
-      }
-
-      Suspend -> pure(State(..state, gain: 0.0))
+      Resume -> #(State(..state, gain: 1.0), context.resume(state.ctx))
+      Suspend -> #(State(..state, gain: 0.0), context.suspend(state.ctx))
     }
   }
 
@@ -150,7 +137,7 @@ if javascript {
       render_sound_controls(state.shared.waveform, state.shared.delay_time),
     ]
 
-    element.main([attribute.class(classes)], sections)
+    element.main([class(classes)], sections)
   }
 
   // RENDER: GREETING ----------------------------------------------------------
@@ -160,7 +147,7 @@ if javascript {
       [],
       [
         element.h1(
-          [attribute.class("text-2xl font-bold")],
+          [class("text-2xl font-bold")],
           [element.text("Hello, FOSDEM")],
         ),
       ],
@@ -170,52 +157,45 @@ if javascript {
   // RENDER: SEQUENCE CONTROLS -------------------------------------------------
 
   fn render_controls(gain: Float) -> Element(Msg) {
-    let play =
-      button.text(
-        "play",
-        "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-        Send(Play),
-      )
-
-    let stop =
-      button.text(
-        "stop",
-        "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-        Send(Stop),
-      )
-
-    let mute =
-      button.text(
-        when(gain == 1.0, "mute", "unmute"),
-        "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-        when(gain == 1.0, Suspend, Resume),
-      )
-
-    element.section([], [layout.row([play, stop, mute])])
+    element.section(
+      [],
+      [
+        layout.row([
+          button.text(
+            "play",
+            "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
+            Send(Play),
+          ),
+          button.text(
+            "stop",
+            "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
+            Send(Stop),
+          ),
+          button.text(
+            when(gain >. 0.0, "mute", "unmute"),
+            "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
+            when(gain >. 0.0, Suspend, Resume),
+          ),
+        ]),
+      ],
+    )
   }
 
   // RENDER: SEQUENCER ---------------------------------------------------------
 
   fn render_sequencer(rows, active_column) -> Element(Msg) {
     element.section(
-      [
-        attribute.class(
-          "overflow-x-scroll border-4 border-[#828282] rounded-md my-4",
-        ),
-      ],
+      [class("overflow-x-scroll border-4 border-[#828282] rounded-md my-4")],
       list.map(rows, render_row(active_column)),
     )
   }
 
-  fn render_row(active_column) -> fn(shared.Row) -> Element(Msg) {
-    fn(row) {
+  fn render_row(active_column) -> fn(Row) -> Element(Msg) {
+    fn(row: Row) {
       element.div(
-        [attribute.class("flex flex-row items-center")],
+        [class("flex flex-row items-center")],
         [
-          element.span(
-            [attribute.class("pl-2 pr-6 font-bold")],
-            [element.text(name)],
-          ),
+          element.span([class("pl-2 pr-6 font-bold")], [element.text(row.name)]),
           ..list.map(
             map.to_list(row.steps),
             render_step(row.name, active_column),
@@ -226,7 +206,7 @@ if javascript {
   }
 
   fn render_step(name, active_column) -> fn(#(Int, Bool)) -> Element(Msg) {
-    fn(step) {
+    fn(step: #(Int, Bool)) {
       let #(idx, is_active) = step
       let msg = Send(UpdateStep(#(name, idx, !is_active)))
       let bg = case idx == active_column, is_active {
@@ -236,10 +216,7 @@ if javascript {
         False, False -> "bg-charcoal-700 scale-[0.8]"
       }
 
-      element.div(
-        [attribute.class("p-2")],
-        [button.box(bg <> " hover:bg-faff-100", msg)],
-      )
+      element.div([class("p-2")], [button.box(bg <> " hover:bg-faff-100", msg)])
     }
   }
 
@@ -247,17 +224,14 @@ if javascript {
 
   fn render_sound_controls(wave: Waveform, delay: DelayTime) -> Element(Msg) {
     element.section(
-      [attribute.class("flex flex-row justify-between")],
+      [class("flex flex-row justify-between")],
       [render_waveform_controls(wave), render_delay_controls(delay)],
     )
   }
 
   fn render_waveform_controls(selected: Waveform) -> Element(Msg) {
     layout.stack([
-      element.h2(
-        [attribute.class("text-lg font-bold")],
-        [element.text("Waveform:")],
-      ),
+      element.h2([class("text-lg font-bold")], [element.text("Waveform:")]),
       layout.row([
         button.img(
           "/assets/sine.svg",
@@ -285,10 +259,7 @@ if javascript {
 
   fn render_delay_controls(selected: DelayTime) -> Element(Msg) {
     layout.stack([
-      element.h2(
-        [attribute.class("text-lg font-bold")],
-        [element.text("Delay Time:")],
-      ),
+      element.h2([class("text-lg font-bold")], [element.text("Delay Time:")]),
       layout.row([
         button.text(
           "short",

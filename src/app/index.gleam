@@ -8,7 +8,6 @@ if javascript {
   import app/ui/layout
   import app/util/bool.{when}
   import app/util/pair
-  import gleam/int
   import gleam/io
   import gleam/json
   import gleam/list
@@ -20,14 +19,14 @@ if javascript {
   import lustre/attribute
   import lustre/cmd.{Cmd}
   import lustre/element.{Element}
-  import shared/state as shared
+  import shared/state.{
+    DelayTime, Long, Sawtooth, Short, Sine, Square, Triangle, Waveform,
+  } as shared
   import shared/to_backend.{
-    Play, Stop, ToBackend, UpdateDelayAmount, UpdateDelayTime, UpdateGain,
-    UpdateStep, UpdateWaveform,
+    Play, Stop, ToBackend, UpdateDelayTime, UpdateStep, UpdateWaveform,
   }
   import shared/to_frontend.{
-    SetDelayAmount, SetDelayTime, SetGain, SetRows, SetState, SetStep,
-    SetStepCount, SetWaveform, ToFrontend,
+    SetDelayTime, SetGain, SetRows, SetState, SetStep, SetStepCount, SetWaveform,
   }
 
   // MAIN ------------------------------------------------------------------------
@@ -133,11 +132,6 @@ if javascript {
           ..state,
           shared: shared.State(..state.shared, delay_time: delay_time),
         )
-      Ok(SetDelayAmount(delay_amount)) ->
-        State(
-          ..state,
-          shared: shared.State(..state.shared, delay_amount: delay_amount),
-        )
       Ok(SetGain(gain)) ->
         State(..state, shared: shared.State(..state.shared, gain: gain))
 
@@ -153,13 +147,14 @@ if javascript {
       render_greeting(),
       render_controls(state.gain),
       render_sequencer(state.shared.rows, state.shared.step),
-      render_sound_controls(),
+      render_sound_controls(state.shared.waveform, state.shared.delay_time),
     ]
 
     element.main([attribute.class(classes)], sections)
   }
 
   // RENDER: GREETING ----------------------------------------------------------
+
   fn render_greeting() -> Element(Msg) {
     element.section(
       [],
@@ -173,6 +168,7 @@ if javascript {
   }
 
   // RENDER: SEQUENCE CONTROLS -------------------------------------------------
+
   fn render_controls(gain: Float) -> Element(Msg) {
     let play =
       button.text(
@@ -199,6 +195,7 @@ if javascript {
   }
 
   // RENDER: SEQUENCER ---------------------------------------------------------
+
   fn render_sequencer(rows, active_column) -> Element(Msg) {
     element.section(
       [
@@ -212,7 +209,6 @@ if javascript {
 
   fn render_row(active_column) -> fn(shared.Row) -> Element(Msg) {
     fn(row) {
-      let shared.Row(name, note, steps) = row
       element.div(
         [attribute.class("flex flex-row items-center")],
         [
@@ -220,7 +216,10 @@ if javascript {
             [attribute.class("pl-2 pr-6 font-bold")],
             [element.text(name)],
           ),
-          ..list.map(map.to_list(steps), render_step(name, active_column))
+          ..list.map(
+            map.to_list(row.steps),
+            render_step(row.name, active_column),
+          )
         ],
       )
     }
@@ -245,14 +244,15 @@ if javascript {
   }
 
   // RENDER: SOUND CONTROLS ----------------------------------------------------
-  fn render_sound_controls() -> Element(Msg) {
+
+  fn render_sound_controls(wave: Waveform, delay: DelayTime) -> Element(Msg) {
     element.section(
       [attribute.class("flex flex-row justify-between")],
-      [render_waveform_controls(), render_delay_controls()],
+      [render_waveform_controls(wave), render_delay_controls(delay)],
     )
   }
 
-  fn render_waveform_controls() -> Element(Msg) {
+  fn render_waveform_controls(selected: Waveform) -> Element(Msg) {
     layout.stack([
       element.h2(
         [attribute.class("text-lg font-bold")],
@@ -261,29 +261,29 @@ if javascript {
       layout.row([
         button.img(
           "/assets/sine.svg",
-          "flex justify-center items-center w-20 bg-blue-200 hover:bg-blue-400",
-          Send(UpdateWaveform("sine")),
+          when(selected == Sine, "bg-blue-600", "bg-blue-200") <> " flex justify-center items-center w-20 hover:bg-blue-400",
+          Send(UpdateWaveform(Sine)),
         ),
         button.img(
           "/assets/triangle.svg",
-          "flex justify-center items-center w-20 bg-green-200 hover:bg-green-400",
-          Send(UpdateWaveform("triangle")),
-        ),
-        button.img(
-          "/assets/square.svg",
-          "flex justify-center items-center w-20 bg-pink-200 hover:bg-pink-400",
-          Send(UpdateWaveform("square")),
+          when(selected == Triangle, "bg-green-600", "bg-green-200") <> " flex justify-center items-center w-20 hover:bg-green-400",
+          Send(UpdateWaveform(Triangle)),
         ),
         button.img(
           "/assets/saw.svg",
-          "flex justify-center items-center w-20 bg-yellow-200 hover:bg-yellow-400",
-          Send(UpdateWaveform("sawtooth")),
+          when(selected == Sawtooth, "bg-pink-600", "bg-pink-200") <> " flex justify-center items-center w-20 hover:bg-pink-400",
+          Send(UpdateWaveform(Sawtooth)),
+        ),
+        button.img(
+          "/assets/square.svg",
+          when(selected == Square, "bg-yellow-600", "bg-yellow-200") <> " flex justify-center items-center w-20 hover:bg-yellow-400",
+          Send(UpdateWaveform(Square)),
         ),
       ]),
     ])
   }
 
-  fn render_delay_controls() -> Element(Msg) {
+  fn render_delay_controls(selected: DelayTime) -> Element(Msg) {
     layout.stack([
       element.h2(
         [attribute.class("text-lg font-bold")],
@@ -292,13 +292,13 @@ if javascript {
       layout.row([
         button.text(
           "short",
-          "bg-unnamed-blue-200 hover:bg-purple-400",
-          Send(UpdateDelayTime(0.1)),
+          when(selected == Short, "bg-purple-600", "bg-purple-200") <> " hover:bg-purple-400",
+          Send(UpdateDelayTime(Short)),
         ),
         button.text(
           "long",
-          "bg-unnamed-blue-200 hover:bg-purple-400",
-          Send(UpdateDelayTime(0.5)),
+          when(selected == Long, "bg-purple-600", "bg-purple-200") <> " hover:bg-purple-400",
+          Send(UpdateDelayTime(Long)),
         ),
       ]),
     ])

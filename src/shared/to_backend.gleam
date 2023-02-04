@@ -3,6 +3,7 @@
 import gleam/dynamic.{DecodeError, Dynamic}
 import gleam/json.{Json}
 import gleam/result
+import shared/state.{DelayTime, Waveform}
 
 // TYPES -----------------------------------------------------------------------
 
@@ -11,11 +12,10 @@ import gleam/result
 pub type ToBackend {
   Play
   Stop
-  UpdateDelayAmount(Float)
-  UpdateDelayTime(Float)
+  UpdateDelayTime(DelayTime)
   UpdateGain(Float)
   UpdateStep(#(String, Int, Bool))
-  UpdateWaveform(String)
+  UpdateWaveform(Waveform)
 }
 
 // JSON ------------------------------------------------------------------------
@@ -35,19 +35,13 @@ pub fn encode(msg: ToBackend) -> Json {
     UpdateWaveform(waveform) ->
       json.object([
         #("$", json.string("UpdateWaveform")),
-        #("waveform", json.string(waveform)),
+        #("waveform", state.encode_waveform(waveform)),
       ])
 
     UpdateDelayTime(delay_time) ->
       json.object([
         #("$", json.string("UpdateDelayTime")),
-        #("delay_time", json.float(delay_time)),
-      ])
-
-    UpdateDelayAmount(delay_amount) ->
-      json.object([
-        #("$", json.string("UpdateDelayAmount")),
-        #("delay_amount", json.float(delay_amount)),
+        #("delay_time", state.encode_delay_time(delay_time)),
       ])
 
     UpdateGain(gain) ->
@@ -82,18 +76,13 @@ pub fn decoder(dynamic: Dynamic) -> Result(ToBackend, List(DecodeError)) {
 
     "UpdateWaveform" ->
       dynamic
-      |> dynamic.field("waveform", dynamic.string)
+      |> dynamic.field("waveform", state.waveform_decoder)
       |> result.map(UpdateWaveform)
 
     "UpdateDelayTime" ->
       dynamic
-      |> dynamic.field("delay_time", dynamic.float)
+      |> dynamic.field("delay_time", state.delay_time_decoder)
       |> result.map(UpdateDelayTime)
-
-    "UpdateDelayAmount" ->
-      dynamic
-      |> dynamic.field("delay_amount", dynamic.float)
-      |> result.map(UpdateDelayAmount)
 
     "UpdateGain" ->
       dynamic

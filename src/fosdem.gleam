@@ -2,13 +2,11 @@ if erlang {
   // IMPORTS ---------------------------------------------------------------------
 
   import gleam/bit_builder
-  import gleam/dynamic
   import gleam/erlang/file
   import gleam/erlang/process.{Subject}
   import gleam/http.{Get}
   import gleam/http/request
   import gleam/http/response.{Response}
-  import gleam/int
   import gleam/io
   import gleam/json
   import gleam/list
@@ -26,15 +24,14 @@ if erlang {
   import mist/websocket.{TextMessage, WebsocketHandler}
   import shared/state as shared
   import shared/to_backend.{
-    Play, Stop, ToBackend, UpdateDelayAmount, UpdateDelayTime, UpdateGain,
-    UpdateStep, UpdateWaveform,
+    Play, Stop, ToBackend, UpdateDelayTime, UpdateGain, UpdateStep,
+    UpdateWaveform,
   }
   import shared/to_frontend.{
-    SetDelayAmount, SetDelayTime, SetGain, SetRows, SetState, SetStep,
-    SetWaveform, ToFrontend,
+    SetDelayTime, SetGain, SetRows, SetState, SetStep, SetWaveform,
   }
 
-  // TYPES -----------------------------------------------------------------------
+  // TYPES ---------------------------------------------------------------------
 
   type Msg {
     OnConnect(client: Client)
@@ -53,7 +50,11 @@ if erlang {
     State(clients: Set(Client), shared: shared.State, running: Bool)
   }
 
-  //
+  // CONSTANTS -----------------------------------------------------------------
+
+  const interval = 250
+
+  // MAIN ----------------------------------------------------------------------
 
   pub fn main() {
     assert Ok(app) = start()
@@ -63,19 +64,52 @@ if erlang {
     process.sleep_forever()
   }
 
-  //
-
   fn start() -> Result(App, StartError) {
     let init = State(set.new(), shared.init(), False)
+    let broadcast = fn(clients, message) -> Nil {
+      use _, client <- set.fold(clients, Nil)
+      let json = to_frontend.encode(message)
+      let text = TextMessage(json.to_string(json))
+      websocket.send(client, text)
+    }
 
     use event, state <- actor.start(init)
     let state = case event {
-      OnConnect(client) -> on_connect(client, state)
-      OnDisconnect(client) -> on_disconnect(client, state)
-      OnMessage(self, _, Play) -> on_play(self, state)
-      OnMessage(_, _, Stop) -> on_stop(state)
-      OnMessage(_, _, UpdateStep(#(name, idx, on))) ->
-        on_update_step(state, name, idx, on)
+      OnConnect(client) -> {
+        let message = SetState(state.shared)
+        let json = to_frontend.encode(message)
+        let text = TextMessage(json.to_string(json))
+
+        websocket.send(client, text)
+        State(..state, clients: set.insert(state.clients, client))
+      }
+
+      OnDisconnect(client) ->
+        State(..state, clients: set.delete(state.clients, client))
+
+      OnMessage(self, _, Play) -> {
+        process.send_after(self, interval, Tick(self))
+        State(..state, running: True)
+      }
+
+      OnMessage(_, _, Stop) -> State(..state, running: False)
+
+      OnMessage(_, _, UpdateStep(#(name, idx, on))) -> {
+        let step_count = state.shared.step_count
+        let rows = {
+          use row <- list.map(state.shared.rows)
+
+          case row.name == name {
+            True if idx < step_count ->
+              shared.Row(..row, steps: map.insert(row.steps, idx, on))
+            _ -> row
+          }
+        }
+        let shared = shared.State(..state.shared, rows: rows)
+
+        broadcast(state.clients, SetRows(rows))
+        State(..state, shared: shared)
+      }
 
       OnMessage(_, _, UpdateWaveform(waveform)) -> {
         let shared = shared.State(..state.shared, waveform: waveform)
@@ -91,13 +125,6 @@ if erlang {
         State(..state, shared: shared)
       }
 
-      OnMessage(_, _, UpdateDelayAmount(delay_amount)) -> {
-        let shared = shared.State(..state.shared, delay_amount: delay_amount)
-        broadcast(state.clients, SetDelayAmount(delay_amount))
-
-        State(..state, shared: shared)
-      }
-
       OnMessage(_, _, UpdateGain(gain)) -> {
         let shared = shared.State(..state.shared, gain: gain)
         broadcast(state.clients, SetGain(gain))
@@ -105,77 +132,29 @@ if erlang {
         State(..state, shared: shared)
       }
 
-      Tick(self) -> {
+      Tick(self) ->
         case state.running {
-          True -> process.send_after(self, 400, Tick(self))
-          False -> dynamic.unsafe_coerce(dynamic.from(Nil))
+          False -> state
+          True -> {
+            process.send_after(self, interval, Tick(self))
+
+            let step = { state.shared.step + 1 } % state.shared.step_count
+            let shared = shared.State(..state.shared, step: step)
+
+            case step {
+              0 -> broadcast(state.clients, SetState(shared))
+              _ -> broadcast(state.clients, SetStep(step))
+            }
+
+            State(..state, shared: shared)
+          }
         }
-
-        let step = { state.shared.step + 1 } % state.shared.step_count
-        let shared = shared.State(..state.shared, step: step)
-
-        case step {
-          0 -> broadcast(state.clients, SetState(shared))
-          _ -> broadcast(state.clients, SetStep(step))
-        }
-
-        State(..state, shared: shared)
-      }
     }
 
     Continue(state)
   }
 
-  fn on_play(self: App, state: State) -> State {
-    process.send_after(self, 400, Tick(self))
-    State(..state, running: True)
-  }
-
-  fn on_stop(state: State) -> State {
-    State(..state, running: False)
-  }
-
-  fn on_update_step(state: State, name: String, idx: Int, on: Bool) -> State {
-    let step_count = state.shared.step_count
-    let rows = {
-      use row <- list.map(state.shared.rows)
-
-      case row.name == name {
-        True if idx < step_count ->
-          shared.Row(..row, steps: map.insert(row.steps, idx, on))
-        _ -> row
-      }
-    }
-    let shared = shared.State(..state.shared, rows: rows)
-
-    broadcast(state.clients, SetRows(rows))
-    State(..state, shared: shared)
-  }
-
-  // Broadcast a message to all connected clients.
-  fn broadcast(clients: Set(Client), message: ToFrontend) -> Nil {
-    use _, client <- set.fold(clients, Nil)
-    let json = to_frontend.encode(message)
-    let text = TextMessage(json.to_string(json))
-    websocket.send(client, text)
-  }
-
-  fn on_connect(client: Client, state: State) -> State {
-    io.debug("connected")
-    let message = SetState(state.shared)
-    let json = to_frontend.encode(message)
-    let text = TextMessage(json.to_string(json))
-
-    websocket.send(client, text)
-    State(..state, clients: set.insert(state.clients, client))
-  }
-
-  fn on_disconnect(client: Client, state: State) -> State {
-    io.debug("disconnected")
-    State(..state, clients: set.delete(state.clients, client))
-  }
-
-  //
+  // WEB SERVER ----------------------------------------------------------------
 
   fn serve(app: App) -> Result(Nil, glisten.StartError) {
     let port = 8080
@@ -238,7 +217,7 @@ if erlang {
     }
   }
 
-  //
+  // WEB SOCKETS ---------------------------------------------------------------
 
   fn upgrade_websocket(app: App) -> HandlerResponse {
     let handler =

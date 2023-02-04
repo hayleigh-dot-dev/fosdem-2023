@@ -3,21 +3,20 @@
 import gleam/dynamic.{DecodeError, Dynamic}
 import gleam/json.{Json}
 import gleam/result
-import shared/state.{Row, State}
+import shared/state.{DelayTime, Row, State, Waveform}
 
 // TYPES -----------------------------------------------------------------------
 
 ///
 ///
 pub type ToFrontend {
-  SetState(State)
+  SetDelayTime(DelayTime)
+  SetGain(Float)
   SetRows(List(Row))
+  SetState(State)
   SetStep(Int)
   SetStepCount(Int)
-  SetWaveform(String)
-  SetDelayTime(Float)
-  SetDelayAmount(Float)
-  SetGain(Float)
+  SetWaveform(Waveform)
 }
 
 // JSON ------------------------------------------------------------------------
@@ -50,19 +49,13 @@ pub fn encode(msg: ToFrontend) -> Json {
     SetWaveform(waveform) ->
       json.object([
         #("$", json.string("SetWaveform")),
-        #("waveform", json.string(waveform)),
+        #("waveform", state.encode_waveform(waveform)),
       ])
 
     SetDelayTime(delay_time) ->
       json.object([
         #("$", json.string("SetDelayTime")),
-        #("delay_time", json.float(delay_time)),
-      ])
-
-    SetDelayAmount(delay_amount) ->
-      json.object([
-        #("$", json.string("SetDelayAmount")),
-        #("delay_amount", json.float(delay_amount)),
+        #("delay_time", state.encode_delay_time(delay_time)),
       ])
 
     SetGain(gain) ->
@@ -98,18 +91,13 @@ pub fn decoder(dynamic: Dynamic) -> Result(ToFrontend, List(DecodeError)) {
 
     "SetWaveform" ->
       dynamic
-      |> dynamic.field("waveform", dynamic.string)
+      |> dynamic.field("waveform", state.waveform_decoder)
       |> result.map(SetWaveform)
 
     "SetDelayTime" ->
       dynamic
-      |> dynamic.field("delay_time", dynamic.float)
+      |> dynamic.field("delay_time", state.delay_time_decoder)
       |> result.map(SetDelayTime)
-
-    "SetDelayAmount" ->
-      dynamic
-      |> dynamic.field("delay_amount", dynamic.float)
-      |> result.map(SetDelayAmount)
 
     "SetGain" ->
       dynamic

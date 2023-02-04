@@ -24,10 +24,8 @@ pub type State {
     /// it's easy to wrap the `step` around once we get to the end.
     step_count: Int,
     /// The waveform to use for the oscillator.
-    waveform: String,
-    /// We have two delays, either a 
-    delay_time: Float,
-    delay_amount: Float,
+    waveform: Waveform,
+    delay_time: DelayTime,
     /// The master gain for the entire sequence. Each client will have their own
     /// volume toggle, but the master gain is used for global stop/start muting.
     gain: Float,
@@ -39,6 +37,22 @@ pub type State {
 ///
 pub type Row {
   Row(name: String, note: Float, steps: Map(Int, Bool))
+}
+
+///
+///
+pub type Waveform {
+  Sine
+  Triangle
+  Sawtooth
+  Square
+}
+
+///
+///
+pub type DelayTime {
+  Short
+  Long
 }
 
 // CONSTANTS -------------------------------------------------------------------
@@ -63,7 +77,7 @@ pub fn init() {
   let step_count = 16
   let rows = init_rows(step_count)
 
-  State(rows, 0, step_count, "sine", 1.0, 0.2, 0.5)
+  State(rows, 0, step_count, Sine, Short, 0.5)
 }
 
 fn init_rows(step_count: Int) -> List(Row) {
@@ -91,9 +105,8 @@ pub fn encode(state: State) -> Json {
     #("rows", json.array(state.rows, encode_row)),
     #("step", json.int(state.step)),
     #("step_count", json.int(state.step_count)),
-    #("waveform", json.string(state.waveform)),
-    #("delay_time", json.float(state.delay_time)),
-    #("delay_amount", json.float(state.delay_amount)),
+    #("waveform", encode_waveform(state.waveform)),
+    #("delay_time", encode_delay_time(state.delay_time)),
     #("gain", json.float(state.gain)),
   ])
 }
@@ -116,6 +129,22 @@ fn encode_steps(steps: Map(Int, Bool)) -> Json {
   json.preprocessed_array([json.int(step.0), json.bool(step.1)])
 }
 
+pub fn encode_waveform(waveform: Waveform) -> Json {
+  case waveform {
+    Sine -> json.object([#("$", json.string("Sine"))])
+    Triangle -> json.object([#("$", json.string("Triangle"))])
+    Sawtooth -> json.object([#("$", json.string("Sawtooth"))])
+    Square -> json.object([#("$", json.string("Square"))])
+  }
+}
+
+pub fn encode_delay_time(delay_time: DelayTime) -> Json {
+  case delay_time {
+    Short -> json.object([#("$", json.string("Short"))])
+    Long -> json.object([#("$", json.string("Long"))])
+  }
+}
+
 /// Where the JSON library let us turn Gleam values into JSON, the `dynamic`
 /// module can help us turn unknown runtime values into well-typed Gleam ones.
 ///
@@ -123,14 +152,13 @@ pub fn decoder(dynamic: Dynamic) -> Result(State, List(DecodeError)) {
   use tag <- result.then(dynamic.field("$", dynamic.string)(dynamic))
   let decoder = case tag {
     "State" ->
-      dynamic.decode7(
+      dynamic.decode6(
         State,
         dynamic.field("rows", dynamic.list(row_decoder)),
         dynamic.field("step", dynamic.int),
         dynamic.field("step_count", dynamic.int),
-        dynamic.field("waveform", dynamic.string),
-        dynamic.field("delay_time", dynamic.float),
-        dynamic.field("delay_amount", dynamic.float),
+        dynamic.field("waveform", waveform_decoder),
+        dynamic.field("delay_time", delay_time_decoder),
         dynamic.field("gain", dynamic.float),
       )
 
@@ -171,4 +199,28 @@ fn step_decoder(dynamic: Dynamic) -> Result(#(Int, Bool), List(DecodeError)) {
     )
 
   decoder(dynamic)
+}
+
+pub fn waveform_decoder(dynamic: Dynamic) -> Result(Waveform, List(DecodeError)) {
+  use tag <- result.then(dynamic.field("$", dynamic.string)(dynamic))
+
+  case tag {
+    "Sine" -> Ok(Sine)
+    "Triangle" -> Ok(Triangle)
+    "Sawtooth" -> Ok(Sawtooth)
+    "Square" -> Ok(Square)
+    _ -> Error([DecodeError("Waveform", tag, ["$"])])
+  }
+}
+
+pub fn delay_time_decoder(
+  dynamic: Dynamic,
+) -> Result(DelayTime, List(DecodeError)) {
+  use tag <- result.then(dynamic.field("$", dynamic.string)(dynamic))
+
+  case tag {
+    "Short" -> Ok(Short)
+    "Long" -> Ok(Long)
+    _ -> Error([DecodeError("DelayTime", tag, ["$"])])
+  }
 }

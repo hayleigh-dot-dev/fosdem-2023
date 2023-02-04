@@ -3,6 +3,7 @@ if javascript {
 
   import app/audio/node.{Key, Node, Ref}
   import app/audio/param.{Param, Property}
+  import app/util/bool.{when}
   import gleam/dynamic.{Dynamic}
   import gleam/int
   import gleam/list
@@ -45,14 +46,28 @@ if javascript {
   external fn delete_from_patch(ctx: AudioContext, patch: DeletedPatch) -> Nil =
     "../../app.ffi.mjs" "delete_from_patch"
 
-  pub external fn resume(ctx: AudioContext) -> Nil =
+  external fn do_resume(ctx: AudioContext) -> Nil =
     "../../app.ffi.mjs" "resume"
 
-  pub external fn suspend(ctx: AudioContext) -> Nil =
+  external fn do_suspend(ctx: AudioContext) -> Nil =
     "../../app.ffi.mjs" "suspend"
 
   // MANIPULATIONS ---------------------------------------------------------------
 
+  ///
+  ///
+  pub fn resume(ctx: AudioContext) -> Cmd(msg) {
+    cmd.from(fn(_) { do_resume(ctx) })
+  }
+
+  ///
+  ///
+  pub fn suspend(ctx: AudioContext) -> Cmd(msg) {
+    cmd.from(fn(_) { do_suspend(ctx) })
+  }
+
+  ///
+  ///
   pub fn update(
     ctx: AudioContext,
     prev: List(Node),
@@ -65,7 +80,7 @@ if javascript {
     apply_patches(ctx, patches)
   }
 
-  pub fn apply_patches(ctx: AudioContext, patches: Patches) -> Cmd(msg) {
+  fn apply_patches(ctx: AudioContext, patches: Patches) -> Cmd(msg) {
     cmd.from(fn(_) {
       apply_deleted_patches(ctx, patches.deleted)
       apply_created_patches(ctx, patches.created)
@@ -88,10 +103,9 @@ if javascript {
     delete_from_patch(ctx, patch)
   }
 
-  // CONVERSIONS -----------------------------------------------------------------
-  // UTILS -----------------------------------------------------------------------
+  // CONVERSIONS ---------------------------------------------------------------
 
-  pub fn to_graph(nodes: List(Node)) -> Map(String, Node) {
+  fn to_graph(nodes: List(Node)) -> Map(String, Node) {
     nodes
     |> list.index_fold(map.new(), flatten(""))
   }
@@ -210,22 +224,17 @@ if javascript {
     prev_params: List(Param),
     curr_params: List(Param),
   ) -> Patches {
-    let #(prev_params, prev_props) = {
-      use acc, param <- list.fold(prev_params, #(map.new(), map.new()))
+    let split_params = fn(params) {
+      use acc, param <- list.fold(params, #(map.new(), map.new()))
       case param {
         Param(name, value) -> #(map.insert(acc.0, name, value), acc.1)
         Property(name, value) -> #(acc.0, map.insert(acc.1, name, value))
         _ -> acc
       }
     }
-    let #(curr_params, curr_props) = {
-      use acc, param <- list.fold(curr_params, #(map.new(), map.new()))
-      case param {
-        Param(name, value) -> #(map.insert(acc.0, name, value), acc.1)
-        Property(name, value) -> #(acc.0, map.insert(acc.1, name, value))
-        _ -> acc
-      }
-    }
+
+    let #(prev_params, prev_props) = split_params(prev_params)
+    let #(curr_params, curr_props) = split_params(curr_params)
 
     patches
     |> fn(patches) {

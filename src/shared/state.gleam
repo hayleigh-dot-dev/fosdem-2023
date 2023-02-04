@@ -8,18 +8,35 @@ import gleam/list
 
 // TYPES -----------------------------------------------------------------------
 
+/// This `State` is shared by the backend and all connected clients. Clients then
+/// use this state to render their own UI and play their own audio. Each client
+/// can send updates to the backend to alter the state, and changes are broadcast
+/// to everyone, so everyone is playing together!
+///
 pub type State {
   State(
+    /// The represents each horizontal row of the sequencer. Each row is a differnt
+    /// note, but every row is the same length.
     rows: List(Row),
+    /// This is the current step that we're on in the sequence.
     step: Int,
+    /// This is the total number of steps in the sequence. We keep this around so
+    /// it's easy to wrap the `step` around once we get to the end.
     step_count: Int,
+    /// The waveform to use for the oscillator.
     waveform: String,
+    /// We have two delays, either a 
     delay_time: Float,
     delay_amount: Float,
+    /// The master gain for the entire sequence. Each client will have their own
+    /// volume toggle, but the master gain is used for global stop/start muting.
     gain: Float,
   )
 }
 
+/// Gleam doesn't have an `Array` type in the standard library, but we can make
+/// do with a `Map` with `Int` keys. 
+///
 pub type Row {
   Row(name: String, note: Float, steps: Map(Int, Bool))
 }
@@ -35,6 +52,13 @@ const notes: List(#(String, Float)) = [
   #("E4", 329.63),
   #("D4", 293.66),
   #("C4", 261.63),
+  #("B3", 246.94),
+  #("A3", 220.00),
+  #("G3", 196.00),
+  #("F3", 174.61),
+  #("E3", 164.81),
+  #("D3", 146.83),
+  #("C3", 130.81),
 ]
 
 // CONSTRUCTORS ----------------------------------------------------------------
@@ -57,6 +81,14 @@ fn init_rows(step_count: Int) -> List(Row) {
 
 // JSON ------------------------------------------------------------------------
 
+/// Gleam's JSON library gives us a handful of functions to turn everyday Gleam
+/// values into JSON. By combining them together and building them up, we can 
+/// encode our `State` type however we want.
+///
+/// As a convention I like to use the `$` field to encode the tag of the custom
+/// type we're encoding: this makes it a lot easier to decode later on because
+/// we can choose the correct decoder based on the tag.
+///
 pub fn encode(state: State) -> Json {
   json.object([
     #("$", json.string("State")),
@@ -70,6 +102,10 @@ pub fn encode(state: State) -> Json {
   ])
 }
 
+/// `encode_row` is public because the backend sometimes wants to broadcast 
+/// updates to the rows of the sequencer to all clients without broadcasting the
+/// entire application state.
+///
 pub fn encode_row(row: Row) -> Json {
   json.object([
     #("$", json.string("Row")),
@@ -84,9 +120,11 @@ fn encode_steps(steps: Map(Int, Bool)) -> Json {
   json.preprocessed_array([json.int(step.0), json.bool(step.1)])
 }
 
+/// Where the JSON library let us turn Gleam values into JSON, the `dynamic`
+/// module can help us turn unknown runtime values into well-typed Gleam ones.
+///
 pub fn decoder(dynamic: Dynamic) -> Result(State, List(DecodeError)) {
   use tag <- result.then(dynamic.field("$", dynamic.string)(dynamic))
-
   let decoder = case tag {
     "State" ->
       dynamic.decode7(
@@ -129,11 +167,12 @@ fn steps_decoder(dynamic: Dynamic) -> Result(Map(Int, Bool), List(DecodeError)) 
 }
 
 fn step_decoder(dynamic: Dynamic) -> Result(#(Int, Bool), List(DecodeError)) {
-  dynamic.decode2(
-    fn(k, v) { #(k, v) },
-    dynamic.element(0, dynamic.int),
-    dynamic.element(1, dynamic.bool),
-  )(
-    dynamic,
-  )
+  let decoder =
+    dynamic.decode2(
+      fn(k, v) { #(k, v) },
+      dynamic.element(0, dynamic.int),
+      dynamic.element(1, dynamic.bool),
+    )
+
+  decoder(dynamic)
 }

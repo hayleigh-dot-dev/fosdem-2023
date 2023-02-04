@@ -55,16 +55,12 @@ const notes: List(#(String, Float)) = [
   #("B3", 246.94),
   #("A3", 220.00),
   #("G3", 196.00),
-  #("F3", 174.61),
-  #("E3", 164.81),
-  #("D3", 146.83),
-  #("C3", 130.81),
 ]
 
 // CONSTRUCTORS ----------------------------------------------------------------
 
 pub fn init() {
-  let step_count = 8
+  let step_count = 16
   let rows = init_rows(step_count)
 
   State(rows, 0, step_count, "sine", 1.0, 0.2, 0.5)

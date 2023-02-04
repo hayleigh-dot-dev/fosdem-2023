@@ -9,15 +9,12 @@ import gleam/result
 ///
 ///
 pub type ToBackend {
-  AddStep
   Play
-  RemoveStep
   Stop
   UpdateDelayAmount(Float)
   UpdateDelayTime(Float)
   UpdateGain(Float)
   UpdateStep(#(String, Int, Bool))
-  UpdateStepCount(Int)
   UpdateWaveform(String)
 }
 
@@ -34,15 +31,6 @@ pub fn encode(msg: ToBackend) -> Json {
         #("$", json.string("UpdateStep")),
         #("step", encode_step(step)),
       ])
-
-    UpdateStepCount(step_count) ->
-      json.object([
-        #("$", json.string("UpdateStepCount")),
-        #("step_count", json.int(step_count)),
-      ])
-
-    AddStep -> json.object([#("$", json.string("AddStep"))])
-    RemoveStep -> json.object([#("$", json.string("RemoveStep"))])
 
     UpdateWaveform(waveform) ->
       json.object([
@@ -87,19 +75,10 @@ pub fn decoder(dynamic: Dynamic) -> Result(ToBackend, List(DecodeError)) {
   case tag {
     "Play" -> Ok(Play)
     "Stop" -> Ok(Stop)
-
     "UpdateStep" ->
       dynamic
       |> dynamic.field("step", step_decoder)
       |> result.map(UpdateStep)
-
-    "UpdateStepCount" ->
-      dynamic
-      |> dynamic.field("step_count", dynamic.int)
-      |> result.map(UpdateStepCount)
-
-    "AddStep" -> Ok(AddStep)
-    "RemoveStep" -> Ok(RemoveStep)
 
     "UpdateWaveform" ->
       dynamic

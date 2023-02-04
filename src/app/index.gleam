@@ -1,28 +1,29 @@
 if javascript {
   // IMPORTS ---------------------------------------------------------------------
 
-  import app/data/ctx.{AudioContext}
-  import app/data/io.{IO}
+  import app/audio
+  import app/audio/context.{AudioContext}
+  import app/audio/node.{Node}
+  import app/ui/button
+  import app/ui/layout
+  import app/util/bool.{when}
+  import app/util/pair
   import gleam/int
-  import gleam/io as console
+  import gleam/io
   import gleam/json
   import gleam/list
-  import gleam/map.{Map}
+  import gleam/map
   import gleam/option.{None, Option, Some}
   import lustre
   import lustre_websocket.{OnClose,
     OnMessage, OnOpen, WebSocket, WebSocketEvent} as ws
-  import lustre/attribute.{Attribute}
-  import lustre/cmd
+  import lustre/attribute
+  import lustre/cmd.{Cmd}
   import lustre/element.{Element}
-  import lustre/event.{dispatch}
-  import app/audio
-  import app/audio/node.{Node}
-  import app/audio/param.{param, prop}
   import shared/state as shared
   import shared/to_backend.{
-    AddStep, Play, RemoveStep, Stop, ToBackend, UpdateDelayAmount,
-    UpdateDelayTime, UpdateGain, UpdateStep, UpdateStepCount, UpdateWaveform,
+    Play, Stop, ToBackend, UpdateDelayAmount, UpdateDelayTime, UpdateGain,
+    UpdateStep, UpdateWaveform,
   }
   import shared/to_frontend.{
     SetDelayAmount, SetDelayTime, SetGain, SetRows, SetState, SetStep,
@@ -46,7 +47,7 @@ if javascript {
     State(
       ws: Option(WebSocket),
       ctx: AudioContext,
-      nodes: audio.Graph,
+      nodes: List(Node),
       gain: Float,
       // `shared` here refers to the fact that all this state is shared and syncd
       // up with the backend and all other connected clients.
@@ -54,29 +55,36 @@ if javascript {
     )
   }
 
-  fn init(ctx: AudioContext) -> IO(State, Action) {
+  fn init(ctx: AudioContext) -> #(State, Cmd(Msg)) {
     let state = State(None, ctx, [], 0.0, shared.init())
-    let cmd = cmd.batch([ws.init("/ws", WebSocket), ctx.update(ctx, [], [])])
+    let cmd =
+      cmd.batch([ws.init("/ws", WebSocket), context.update(ctx, [], [])])
 
     #(state, cmd)
   }
 
   // UPDATE ----------------------------------------------------------------------
 
-  pub type Action {
+  pub type Msg {
     WebSocket(WebSocketEvent)
     Resume
     Suspend
     Send(ToBackend)
   }
 
-  fn update(state: State, action: Action) -> IO(State, Action) {
-    case action {
-      WebSocket(OnOpen(conn)) -> io.pure(State(..state, ws: Some(conn)))
-      WebSocket(OnClose(_)) -> io.pure(State(..state, ws: None))
-      WebSocket(OnMessage(msg)) ->
-        on_message(state, msg)
-        |> update_audio
+  fn update(state: State, msg: Msg) -> #(State, Cmd(Msg)) {
+    let pure = pair.with(_, cmd.none())
+
+    io.debug(state)
+    case io.debug(msg) {
+      WebSocket(OnOpen(conn)) -> pure(State(..state, ws: Some(conn)))
+      WebSocket(OnClose(_)) -> pure(State(..state, ws: None))
+      WebSocket(OnMessage(msg)) -> {
+        let state = on_message(state, msg)
+
+        audio.render(state.ctx, state.shared, state.gain, state.nodes)
+        |> pair.map_fst(fn(nodes) { State(..state, nodes: nodes) })
+      }
 
       Send(message) ->
         case state.ws {
@@ -84,72 +92,22 @@ if javascript {
             let json = to_backend.encode(message)
             let text = json.to_string(json)
 
-            #(state, ws.send(ws, text))
+            io.debug(text)
+
+            state
+            |> pair.with(ws.send(ws, text))
           }
-          None -> io.pure(state)
+
+          None -> pure(state)
         }
 
       Resume -> {
-        ctx.resume(state.ctx)
-        io.pure(State(..state, gain: 1.0))
+        context.resume(state.ctx)
+        pure(State(..state, gain: 1.0))
       }
 
-      Suspend -> io.pure(State(..state, gain: 0.0))
+      Suspend -> pure(State(..state, gain: 0.0))
     }
-  }
-
-  fn update_audio(state: State) -> IO(State, Action) {
-    let shared.State(rows, step, _, waveform, delay_time, delay_amount, _) =
-      state.shared
-    let prev = state.nodes
-    let next =
-      list.map(rows, voice(step, waveform))
-      |> list.append(output(delay_time, delay_amount, state.gain))
-
-    io.pure(State(..state, nodes: next))
-    |> io.with(ctx.update(state.ctx, prev, next))
-  }
-
-  fn voice(step: Int, waveform: String) -> fn(shared.Row) -> Node {
-    fn(row) {
-      let shared.Row(_, note, steps) = row
-      assert Ok(is_active) = map.get(steps, step)
-      let gain = case is_active {
-        True -> 0.2
-        False -> 0.0
-      }
-
-      console.debug(gain)
-
-      node.osc(
-        [param.freq(note), param.waveform(waveform)],
-        [node.amp([param.gain(gain)], [node.ref("delay"), node.ref("master")])],
-      )
-    }
-  }
-
-  fn output(delay_time: Float, delay_amount: Float, gain: Float) -> List(Node) {
-    let out = node.key("master", node.amp([param.gain(gain)], [node.dac]))
-    let del =
-      node.key(
-        "delay",
-        node.del(
-          [param.delay_time(delay_time)],
-          [
-            node.amp(
-              [param.gain(delay_amount)],
-              [
-                node.lpf(
-                  [param.freq(400.0)],
-                  [node.ref("delay"), node.ref("master")],
-                ),
-              ],
-            ),
-          ],
-        ),
-      )
-
-    [del, out]
   }
 
   fn on_message(state: State, message: String) -> State {
@@ -189,197 +147,77 @@ if javascript {
 
   // RENDER ----------------------------------------------------------------------
 
-  fn render(state: State) -> Element(Action) {
-    element.main(
+  fn render(state: State) -> Element(Msg) {
+    let classes = "flex flex-col font-mono mx-auto py-6 px-4 gap-6 max-w-4xl"
+    let sections = [
+      render_greeting(),
+      render_controls(state.gain),
+      render_sequencer(state.shared.rows, state.shared.step),
+      render_sound_controls(),
+    ]
+
+    element.main([attribute.class(classes)], sections)
+  }
+
+  // RENDER: GREETING ----------------------------------------------------------
+  fn render_greeting() -> Element(Msg) {
+    element.section(
+      [],
       [
-        attribute.class(
-          "flex flex-col font-mono mx-auto py-6 px-4 gap-6 w-screen",
-        ),
-      ],
-      [
-        //
-        element.section(
-          [],
-          [
-            element.h1(
-              [attribute.class("text-2xl font-bold text-gleam-white")],
-              [element.text("Hello, FOSDEM")],
-            ),
-          ],
-        ),
-        //
-        element.section(
-          [attribute.class("flex flex-row gap-6")],
-          [
-            element.div(
-              [attribute.class("flex flex-row gap-1")],
-              [
-                render_button(
-                  "play",
-                  "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [event.on_click(dispatch(Send(Play)))],
-                ),
-                render_button(
-                  "stop",
-                  "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [event.on_click(dispatch(Send(Stop)))],
-                ),
-                case state.gain {
-                  1.0 ->
-                    render_button(
-                      "mute",
-                      "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                      [event.on_click(dispatch(Suspend))],
-                    )
-                  _ ->
-                    render_button(
-                      "unmute",
-                      "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                      [event.on_click(dispatch(Resume))],
-                    )
-                },
-              ],
-            ),
-            element.div(
-              [attribute.class("flex flex-row gap-1")],
-              [
-                render_button(
-                  "add step",
-                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [event.on_click(dispatch(Send(AddStep)))],
-                ),
-                render_button(
-                  "remove step",
-                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [event.on_click(dispatch(Send(RemoveStep)))],
-                ),
-                render_button(
-                  "reset steps",
-                  "bg-orange-600 hover:bg-orange-800",
-                  [],
-                ),
-              ],
-            ),
-          ],
-        ),
-        //
-        element.section(
-          [],
-          [
-            element.div(
-              [attribute.class("text-gleam-white")],
-              [element.text(int.to_string(state.shared.step))],
-            ),
-            render_sequencer(state.shared.rows, state.shared.step),
-          ],
-        ),
-        //
-        element.section(
-          [],
-          [
-            element.h2(
-              [attribute.class("text-lg font-bold text-gleam-white")],
-              [element.text("Waveform:")],
-            ),
-            element.div(
-              [attribute.class("flex flex-row gap-1")],
-              [
-                render_image_button(
-                  "/assets/sine.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [],
-                ),
-                render_image_button(
-                  "/assets/triangle.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [],
-                ),
-                render_image_button(
-                  "/assets/square.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [],
-                ),
-                render_image_button(
-                  "/assets/saw.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
-                  [],
-                ),
-              ],
-            ),
-          ],
-        ),
-        //
-        element.section(
-          [],
-          [
-            element.h2(
-              [attribute.class("text-lg font-bold text-gleam-white")],
-              [element.text("Delay Time:")],
-            ),
-            element.div(
-              [attribute.class("flex flex-row gap-1")],
-              [
-                render_button(
-                  "short",
-                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400 w-20",
-                  [],
-                ),
-                render_button(
-                  "long",
-                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400 w-20",
-                  [],
-                ),
-              ],
-            ),
-          ],
+        element.h1(
+          [attribute.class("text-2xl font-bold")],
+          [element.text("Hello, FOSDEM")],
         ),
       ],
     )
   }
 
-  fn render_button(label, bg, attrs) -> Element(Action) {
-    element.button(
-      [
-        attribute.class(
-          "text-gleam-black " <> bg <> " p-2 mr-4 my-2 rounded-md transition-color",
-        ),
-        ..attrs
-      ],
-      [element.text(label)],
-    )
+  // RENDER: SEQUENCE CONTROLS -------------------------------------------------
+  fn render_controls(gain: Float) -> Element(Msg) {
+    let play =
+      button.text(
+        "play",
+        "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
+        Send(Play),
+      )
+
+    let stop =
+      button.text(
+        "stop",
+        "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
+        Send(Stop),
+      )
+
+    let mute =
+      button.text(
+        when(gain == 1.0, "mute", "unmute"),
+        "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
+        when(gain == 1.0, Suspend, Resume),
+      )
+
+    element.section([], [layout.row([play, stop, mute])])
   }
 
-  fn render_image_button(src, bg, attrs) -> Element(Action) {
-    element.button(
+  // RENDER: SEQUENCER ---------------------------------------------------------
+  fn render_sequencer(rows, active_column) -> Element(Msg) {
+    element.section(
       [
         attribute.class(
-          "text-white " <> bg <> " p-2 mr-4 my-2 rounded-md transition-color",
-        ),
-        ..attrs
-      ],
-      [element.img([attribute.src(src), attribute.class("w-10")])],
-    )
-  }
-
-  fn render_sequencer(rows, active_column) -> Element(Action) {
-    element.div(
-      [
-        attribute.class(
-          "overflow-x border-4 border-[#828282] rounded-md my-4 w-auto",
+          "overflow-x-scroll border-4 border-[#828282] rounded-md my-4",
         ),
       ],
       list.map(rows, render_row(active_column)),
     )
   }
 
-  fn render_row(active_column) -> fn(shared.Row) -> Element(Action) {
+  fn render_row(active_column) -> fn(shared.Row) -> Element(Msg) {
     fn(row) {
       let shared.Row(name, note, steps) = row
       element.div(
         [attribute.class("flex flex-row items-center")],
         [
           element.span(
-            [attribute.class("pl-2 pr-6 font-bold text-gleam-white")],
+            [attribute.class("pl-2 pr-6 font-bold")],
             [element.text(name)],
           ),
           ..list.map(map.to_list(steps), render_step(name, active_column))
@@ -388,40 +226,81 @@ if javascript {
     }
   }
 
-  fn render_step(name, active_column) -> fn(#(Int, Bool)) -> Element(Action) {
+  fn render_step(name, active_column) -> fn(#(Int, Bool)) -> Element(Msg) {
     fn(step) {
       let #(idx, is_active) = step
-
-      let bg = case idx == active_column {
-        True ->
-          case is_active {
-            True -> "bg-faff-200 animate-bloop"
-
-            False -> "bg-charcoal-200 scale-[0.8]"
-          }
-
-        False ->
-          case is_active {
-            True -> "bg-faff-300"
-
-            False -> "bg-charcoal-700 scale-[0.8]"
-          }
+      let msg = Send(UpdateStep(#(name, idx, !is_active)))
+      let bg = case idx == active_column, is_active {
+        True, True -> "bg-faff-200 animate-bloop"
+        True, False -> "bg-charcoal-200 scale-[0.8]"
+        False, True -> "bg-faff-300"
+        False, False -> "bg-charcoal-700 scale-[0.8]"
       }
 
       element.div(
-        [attribute.class("p-2 ")],
-        [
-          element.button(
-            [
-              event.on_click(dispatch(Send(UpdateStep(#(name, idx, !is_active))))),
-              attribute.class(
-                "text-white " <> bg <> " hover:bg-faff-100 px-6 py-6 rounded-lg shadow-sm transition-all",
-              ),
-            ],
-            [],
-          ),
-        ],
+        [attribute.class("p-2")],
+        [button.box(bg <> " hover:bg-faff-100", msg)],
       )
     }
+  }
+
+  // RENDER: SOUND CONTROLS ----------------------------------------------------
+  fn render_sound_controls() -> Element(Msg) {
+    element.section(
+      [attribute.class("flex flex-row justify-between")],
+      [render_waveform_controls(), render_delay_controls()],
+    )
+  }
+
+  fn render_waveform_controls() -> Element(Msg) {
+    layout.stack([
+      element.h2(
+        [attribute.class("text-lg font-bold")],
+        [element.text("Waveform:")],
+      ),
+      layout.row([
+        button.img(
+          "/assets/sine.svg",
+          "flex justify-center items-center w-20 bg-blue-200 hover:bg-blue-400",
+          Send(UpdateWaveform("sine")),
+        ),
+        button.img(
+          "/assets/triangle.svg",
+          "flex justify-center items-center w-20 bg-green-200 hover:bg-green-400",
+          Send(UpdateWaveform("triangle")),
+        ),
+        button.img(
+          "/assets/square.svg",
+          "flex justify-center items-center w-20 bg-pink-200 hover:bg-pink-400",
+          Send(UpdateWaveform("square")),
+        ),
+        button.img(
+          "/assets/saw.svg",
+          "flex justify-center items-center w-20 bg-yellow-200 hover:bg-yellow-400",
+          Send(UpdateWaveform("sawtooth")),
+        ),
+      ]),
+    ])
+  }
+
+  fn render_delay_controls() -> Element(Msg) {
+    layout.stack([
+      element.h2(
+        [attribute.class("text-lg font-bold")],
+        [element.text("Delay Time:")],
+      ),
+      layout.row([
+        button.text(
+          "short",
+          "bg-unnamed-blue-200 hover:bg-purple-400",
+          Send(UpdateDelayTime(0.1)),
+        ),
+        button.text(
+          "long",
+          "bg-unnamed-blue-200 hover:bg-purple-400",
+          Send(UpdateDelayTime(0.5)),
+        ),
+      ]),
+    ])
   }
 }

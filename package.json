@@ -3,6 +3,8 @@
   "type": "module",
   "scripts": {
     "start": "./scripts/run.sh",
+    "dev": "cp gleam.frontend.toml gleam.toml && gleam build && concurrently 'npm run watch:gleam' 'vite --port 1234'",
+    "watch:gleam": "chokidar './src/**/*.gleam' -c 'gleam build'",
     "switch:backend": "cp gleam.backend.toml gleam.toml",
     "switch:frontend": "cp gleam.frontend.toml gleam.toml"
   },

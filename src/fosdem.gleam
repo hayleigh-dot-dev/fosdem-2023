@@ -26,12 +26,12 @@ if erlang {
   import mist/websocket.{TextMessage, WebsocketHandler}
   import shared/state as shared
   import shared/to_backend.{
-    AddStep, Play, RemoveStep, Stop, ToBackend, UpdateDelayAmount,
-    UpdateDelayTime, UpdateGain, UpdateStep, UpdateStepCount, UpdateWaveform,
+    Play, Stop, ToBackend, UpdateDelayAmount, UpdateDelayTime, UpdateGain,
+    UpdateStep, UpdateWaveform,
   }
   import shared/to_frontend.{
     SetDelayAmount, SetDelayTime, SetGain, SetRows, SetState, SetStep,
-    SetStepCount, SetWaveform, ToFrontend,
+    SetWaveform, ToFrontend,
   }
 
   // TYPES -----------------------------------------------------------------------
@@ -76,10 +76,6 @@ if erlang {
       OnMessage(_, _, Stop) -> on_stop(state)
       OnMessage(_, _, UpdateStep(#(name, idx, on))) ->
         on_update_step(state, name, idx, on)
-      OnMessage(_, _, UpdateStepCount(step_count)) ->
-        on_update_step_count(state, step_count)
-      OnMessage(_, _, AddStep) -> on_add_step(state)
-      OnMessage(_, _, RemoveStep) -> on_remove_step(state)
 
       OnMessage(_, _, UpdateWaveform(waveform)) -> {
         let shared = shared.State(..state.shared, waveform: waveform)
@@ -156,53 +152,6 @@ if erlang {
     State(..state, shared: shared)
   }
 
-  fn on_update_step_count(state: State, step_count: Int) -> State {
-    let shared = shared.State(..state.shared, step_count: step_count)
-    broadcast(state.clients, SetStepCount(step_count))
-
-    State(..state, shared: shared)
-  }
-
-  fn on_add_step(state: State) -> State {
-    let step_count = state.shared.step_count + 1
-    let rows =
-      list.map(
-        state.shared.rows,
-        fn(row) {
-          shared.Row(..row, steps: map.insert(row.steps, step_count - 1, False))
-        },
-      )
-    let shared =
-      shared.State(..state.shared, step_count: step_count, rows: rows)
-    broadcast(state.clients, SetStepCount(step_count))
-
-    State(..state, shared: shared)
-  }
-
-  fn on_remove_step(state: State) -> State {
-    let step_count = int.max(state.shared.step_count - 1, 1)
-    let rows =
-      list.map(
-        state.shared.rows,
-        fn(row) {
-          case step_count {
-            1 -> row
-            _ ->
-              shared.Row(
-                ..row,
-                steps: map.insert(row.steps, step_count - 1, False),
-              )
-          }
-        },
-      )
-
-    let shared =
-      shared.State(..state.shared, step_count: step_count, rows: rows)
-    broadcast(state.clients, SetStepCount(step_count))
-
-    State(..state, shared: shared)
-  }
-
   // Broadcast a message to all connected clients.
   fn broadcast(clients: Set(Client), message: ToFrontend) -> Nil {
     use _, client <- set.fold(clients, Nil)
@@ -212,6 +161,7 @@ if erlang {
   }
 
   fn on_connect(client: Client, state: State) -> State {
+    io.debug("connected")
     let message = SetState(state.shared)
     let json = to_frontend.encode(message)
     let text = TextMessage(json.to_string(json))
@@ -221,6 +171,7 @@ if erlang {
   }
 
   fn on_disconnect(client: Client, state: State) -> State {
+    io.debug("disconnected")
     State(..state, clients: set.delete(state.clients, client))
   }
 

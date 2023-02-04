@@ -42,6 +42,8 @@ module.exports = {
           900: "#011518",
         },
         "gleam-white": "#fefefc",
+        "gleam-black": "#1e1e1e",
+        "gleam-blacker": "#151515",
       },
       keyframes: {
         bloop: {

@@ -216,25 +216,25 @@ if javascript {
               [
                 render_button(
                   "play",
-                  "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [event.on_click(dispatch(Send(Play)))],
                 ),
                 render_button(
                   "stop",
-                  "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [event.on_click(dispatch(Send(Stop)))],
                 ),
                 case state.gain {
                   1.0 ->
                     render_button(
                       "mute",
-                      "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                      "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                       [event.on_click(dispatch(Suspend))],
                     )
                   _ ->
                     render_button(
                       "unmute",
-                      "w-24 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                      "w-24 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                       [event.on_click(dispatch(Resume))],
                     )
                 },
@@ -245,12 +245,12 @@ if javascript {
               [
                 render_button(
                   "add step",
-                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [event.on_click(dispatch(Send(AddStep)))],
                 ),
                 render_button(
                   "remove step",
-                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [event.on_click(dispatch(Send(RemoveStep)))],
                 ),
                 render_button(
@@ -286,22 +286,22 @@ if javascript {
               [
                 render_image_button(
                   "/assets/sine.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [],
                 ),
                 render_image_button(
                   "/assets/triangle.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [],
                 ),
                 render_image_button(
                   "/assets/square.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [],
                 ),
                 render_image_button(
                   "/assets/saw.svg",
-                  "flex justify-center items-center w-20 bg-unnamed-blue-700 hover:bg-unnamed-blue-800",
+                  "flex justify-center items-center w-20 bg-unnamed-blue-200 hover:bg-unnamed-blue-400",
                   [],
                 ),
               ],
@@ -321,12 +321,12 @@ if javascript {
               [
                 render_button(
                   "short",
-                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800 w-20",
+                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400 w-20",
                   [],
                 ),
                 render_button(
                   "long",
-                  "bg-unnamed-blue-700 hover:bg-unnamed-blue-800 w-20",
+                  "bg-unnamed-blue-200 hover:bg-unnamed-blue-400 w-20",
                   [],
                 ),
               ],
@@ -341,7 +341,7 @@ if javascript {
     element.button(
       [
         attribute.class(
-          "text-white " <> bg <> " p-2 mr-4 my-2 rounded-md transition-color",
+          "text-gleam-black " <> bg <> " p-2 mr-4 my-2 rounded-md transition-color",
         ),
         ..attrs
       ],
@@ -392,27 +392,19 @@ if javascript {
     fn(step) {
       let #(idx, is_active) = step
 
-      // let bg = case is_active {
-      //   True -> "bg-faff-400"
-      //   False -> "bg-[#595959]"
-      // }
-      // let col_bg = case idx == active_column {
-      //   True -> "bg-faff-50"
-      //   False -> "bg-transparent"
-      // }
       let bg = case idx == active_column {
         True ->
           case is_active {
             True -> "bg-faff-200 animate-bloop"
 
-            False -> "bg-charcoal-500 scale-[0.8]"
+            False -> "bg-charcoal-200 scale-[0.8]"
           }
 
         False ->
           case is_active {
             True -> "bg-faff-300"
 
-            False -> "bg-charcoal-600 scale-[0.8]"
+            False -> "bg-charcoal-700 scale-[0.8]"
           }
       }
 

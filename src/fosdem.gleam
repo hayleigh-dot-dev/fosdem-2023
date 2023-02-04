@@ -72,79 +72,14 @@ if erlang {
     let state = case event {
       OnConnect(client) -> on_connect(client, state)
       OnDisconnect(client) -> on_disconnect(client, state)
-      OnMessage(self, _, Play) -> {
-        process.send_after(self, 400, Tick(self))
-        State(..state, running: True)
-      }
-      OnMessage(_, _, Stop) -> State(..state, running: False)
-      OnMessage(_, _, UpdateStep(#(name, idx, on))) -> {
-        let step_count = state.shared.step_count
-        let rows =
-          list.map(
-            state.shared.rows,
-            fn(row) {
-              case row.name == name {
-                True if idx < step_count ->
-                  shared.Row(..row, steps: map.insert(row.steps, idx, on))
-                _ -> row
-              }
-            },
-          )
-        let shared = shared.State(..state.shared, rows: rows)
-        broadcast(state.clients, SetRows(rows))
-
-        State(..state, shared: shared)
-      }
-
-      OnMessage(_, _, UpdateStepCount(step_count)) -> {
-        let shared = shared.State(..state.shared, step_count: step_count)
-        broadcast(state.clients, SetStepCount(step_count))
-
-        State(..state, shared: shared)
-      }
-
-      OnMessage(_, _, AddStep) -> {
-        let step_count = state.shared.step_count + 1
-        let rows =
-          list.map(
-            state.shared.rows,
-            fn(row) {
-              shared.Row(
-                ..row,
-                steps: map.insert(row.steps, step_count - 1, False),
-              )
-            },
-          )
-        let shared =
-          shared.State(..state.shared, step_count: step_count, rows: rows)
-        broadcast(state.clients, SetStepCount(step_count))
-
-        State(..state, shared: shared)
-      }
-
-      OnMessage(_, _, RemoveStep) -> {
-        let step_count = int.max(state.shared.step_count - 1, 1)
-        let rows =
-          list.map(
-            state.shared.rows,
-            fn(row) {
-              case step_count {
-                1 -> row
-                _ ->
-                  shared.Row(
-                    ..row,
-                    steps: map.insert(row.steps, step_count - 1, False),
-                  )
-              }
-            },
-          )
-
-        let shared =
-          shared.State(..state.shared, step_count: step_count, rows: rows)
-        broadcast(state.clients, SetStepCount(step_count))
-
-        State(..state, shared: shared)
-      }
+      OnMessage(self, _, Play) -> on_play(self, state)
+      OnMessage(_, _, Stop) -> on_stop(state)
+      OnMessage(_, _, UpdateStep(#(name, idx, on))) ->
+        on_update_step(state, name, idx, on)
+      OnMessage(_, _, UpdateStepCount(step_count)) ->
+        on_update_step_count(state, step_count)
+      OnMessage(_, _, AddStep) -> on_add_step(state)
+      OnMessage(_, _, RemoveStep) -> on_remove_step(state)
 
       OnMessage(_, _, UpdateWaveform(waveform)) -> {
         let shared = shared.State(..state.shared, waveform: waveform)
@@ -193,6 +128,79 @@ if erlang {
     }
 
     Continue(state)
+  }
+
+  fn on_play(self: App, state: State) -> State {
+    process.send_after(self, 400, Tick(self))
+    State(..state, running: True)
+  }
+
+  fn on_stop(state: State) -> State {
+    State(..state, running: False)
+  }
+
+  fn on_update_step(state: State, name: String, idx: Int, on: Bool) -> State {
+    let step_count = state.shared.step_count
+    let rows = {
+      use row <- list.map(state.shared.rows)
+
+      case row.name == name {
+        True if idx < step_count ->
+          shared.Row(..row, steps: map.insert(row.steps, idx, on))
+        _ -> row
+      }
+    }
+    let shared = shared.State(..state.shared, rows: rows)
+
+    broadcast(state.clients, SetRows(rows))
+    State(..state, shared: shared)
+  }
+
+  fn on_update_step_count(state: State, step_count: Int) -> State {
+    let shared = shared.State(..state.shared, step_count: step_count)
+    broadcast(state.clients, SetStepCount(step_count))
+
+    State(..state, shared: shared)
+  }
+
+  fn on_add_step(state: State) -> State {
+    let step_count = state.shared.step_count + 1
+    let rows =
+      list.map(
+        state.shared.rows,
+        fn(row) {
+          shared.Row(..row, steps: map.insert(row.steps, step_count - 1, False))
+        },
+      )
+    let shared =
+      shared.State(..state.shared, step_count: step_count, rows: rows)
+    broadcast(state.clients, SetStepCount(step_count))
+
+    State(..state, shared: shared)
+  }
+
+  fn on_remove_step(state: State) -> State {
+    let step_count = int.max(state.shared.step_count - 1, 1)
+    let rows =
+      list.map(
+        state.shared.rows,
+        fn(row) {
+          case step_count {
+            1 -> row
+            _ ->
+              shared.Row(
+                ..row,
+                steps: map.insert(row.steps, step_count - 1, False),
+              )
+          }
+        },
+      )
+
+    let shared =
+      shared.State(..state.shared, step_count: step_count, rows: rows)
+    broadcast(state.clients, SetStepCount(step_count))
+
+    State(..state, shared: shared)
   }
 
   // Broadcast a message to all connected clients.
